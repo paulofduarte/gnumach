@@ -444,6 +444,56 @@ static __attribute__((noinline)) void load_boot_modules_from_dtb(void)
 		i++;
 	}
 
+	/*
+	 *	Fall back to the standard arm64 boot protocol's initrd if no
+	 *	multiboot,module nodes were found.  GRUB on arm64-efi, and any
+	 *	stock arm bootloader using the linux command, emits the initial
+	 *	ramdisk via /chosen/linux,initrd-start + linux,initrd-end and
+	 *	the kernel command line via /chosen/bootargs.  Treat that pair
+	 *	as a single bootstrap module so test harnesses (and anyone who
+	 *	doesn't want to hand-roll the multiboot,module nodes per
+	 *	aarch64/BOOTING) can drive gnumach through unmodified GRUB.
+	 *
+	 *	Single-module by design — the standard protocol has only one
+	 *	initrd slot.  Production multi-module boots use the
+	 *	multiboot,module path above.
+	 */
+	if (i == 0) {
+		struct dtb_prop	start_prop, end_prop, bootargs_prop;
+
+		start_prop = dtb_node_find_prop(&chosen, "linux,initrd-start");
+		end_prop = dtb_node_find_prop(&chosen, "linux,initrd-end");
+		bootargs_prop = dtb_node_find_prop(&chosen, "bootargs");
+
+		if (!DTB_IS_SENTINEL(start_prop) &&
+		    !DTB_IS_SENTINEL(end_prop) &&
+		    !DTB_IS_SENTINEL(bootargs_prop)) {
+			vm_offset_t	off1 = 0, off2 = 0;
+			uint64_t	initrd_start, initrd_end;
+
+			initrd_start = dtb_prop_read_cells(&start_prop,
+			                                   start_prop.length / 4,
+			                                   &off1);
+			initrd_end = dtb_prop_read_cells(&end_prop,
+			                                 end_prop.length / 4,
+			                                 &off2);
+
+			printf("module 0 (initrd): %s\n",
+			       (const char *) bootargs_prop.data);
+			boot_modules[0].string = kvtophys((vm_offset_t)
+			                                  bootargs_prop.data);
+			boot_modules[0].mod_start = initrd_start;
+			boot_modules[0].mod_end = initrd_end;
+			boot_modules[0].reserved = 0;
+
+			pmap_reserve_phys_range(
+				round_page(boot_modules[0].mod_start),
+				round_page(boot_modules[0].mod_end));
+
+			i = 1;
+		}
+	}
+
 	if (i == 0)
 		panic("No bootstrap modules loaded with Mach\n");
 
