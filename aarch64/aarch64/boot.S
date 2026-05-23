@@ -92,8 +92,14 @@ ENTRY(_start)
 	b	EXT(c_boot_entry)
 END(_start)
 
-	.bss
-.boot_stack:
+	/*
+	 * Put the boot stack in its own nobits section so it lives outside
+	 * [__bss_start, __bss_end). Otherwise c_boot_entry's call to
+	 * zero_out_bss() (which memsets the whole BSS region) would clobber
+	 * its own saved x29/x30, sending us to PC=0 on ret.
+	 */
+	.section .boot_stack, "aw", %nobits
+boot_stack:
 	.space	4096
 .boot_stack_end:
 

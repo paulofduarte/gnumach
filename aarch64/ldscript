@@ -27,6 +27,9 @@ SECTIONS
         __bss_start = .;
         *(.bss);
         __bss_end = .;
+        /* Boot stack lives in its own nobits region after __bss_end so
+           it survives zero_out_bss() running from within itself. */
+        *(.boot_stack);
     }
     _image_end = .;
 }
