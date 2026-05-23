@@ -50,6 +50,9 @@ thread_t test_thread_start(task_t task, void(*routine)(void*), void* arg) {
   *(top - 1) = 0;   /* The return address */
 #elif defined(__x86_64__)
   *top = 0;         /* The return address */
+#elif defined(__aarch64__)
+  *top = 0;         /* Unused; aarch64 passes its first arg in x0 (AAPCS),
+                       and routine returns via the saved LR we set below. */
 #endif
   ret = vm_write(task, stack + stack_size - vm_page_size, local_stack, vm_page_size);
   ASSERT_RET(ret, "can't initialize the stack for the new thread");
@@ -61,11 +64,18 @@ thread_t test_thread_start(task_t task, void(*routine)(void*), void* arg) {
   ret = thread_create(task, &thread);
   ASSERT_RET(ret, "thread_create()");
 
+#ifdef __aarch64__
+  struct aarch64_thread_state state;
+  unsigned int count = AARCH64_THREAD_STATE_COUNT;
+  ret = thread_get_state(thread, AARCH64_REGS_SEGS_STATE,
+                         (thread_state_t) &state, &count);
+#else
   struct i386_thread_state state;
   unsigned int count;
   count = i386_THREAD_STATE_COUNT;
   ret = thread_get_state(thread, i386_REGS_SEGS_STATE,
                          (thread_state_t) &state, &count);
+#endif
   ASSERT_RET(ret, "thread_get_state()");
 
 #ifdef __i386__
@@ -77,9 +87,20 @@ thread_t test_thread_start(task_t task, void(*routine)(void*), void* arg) {
   state.ursp = (long) (stack + stack_size - sizeof(long) * 1);
   state.rbp = 0;
   state.rdi = (long)arg;
+#elif defined(__aarch64__)
+  state.pc    = (long) routine;
+  state.sp    = (long) (stack + stack_size - sizeof(long) * 1);
+  state.x[0]  = (long) arg;  /* AAPCS: first arg in x0 */
+  state.x[29] = 0;           /* frame pointer base */
+  state.x[30] = 0;           /* LR = 0 so any ret out of routine traps */
 #endif
+#ifdef __aarch64__
+  ret = thread_set_state(thread, AARCH64_REGS_SEGS_STATE,
+                         (thread_state_t) &state, AARCH64_THREAD_STATE_COUNT);
+#else
   ret = thread_set_state(thread, i386_REGS_SEGS_STATE,
                          (thread_state_t) &state, i386_THREAD_STATE_COUNT);
+#endif
   ASSERT_RET(ret, "thread_set_state");
 
   ret = thread_resume(thread);
