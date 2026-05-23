@@ -22,7 +22,6 @@
 #ifdef MACH_KMSG
 #include <device/kmsg.h>
 #endif
-#include <device/ramdisk.h>
 
 struct dev_ops	dev_name_list[] =
 {
@@ -44,7 +43,6 @@ struct dev_ops	dev_name_list[] =
 	  nodev_async_in,	nulldev_reset,	nulldev_portdeath,	0,
 	  nodev_info },
 #endif
-	RAMDISK_DEV_OPS,
 };
 int	dev_name_count = sizeof(dev_name_list) / sizeof(dev_name_list[0]);
 
