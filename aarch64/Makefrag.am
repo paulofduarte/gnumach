@@ -47,6 +47,7 @@ libkernel_a_SOURCES += \
 	aarch64/aarch64/irq.c \
 	aarch64/aarch64/locore.h \
 	aarch64/aarch64/locore.S \
+	aarch64/aarch64/lock.h \
 	aarch64/aarch64/mach_aarch64.c \
 	aarch64/aarch64/pcb.c \
 	aarch64/aarch64/percpu.c \
@@ -105,6 +106,7 @@ include_mach_aarch64_HEADERS = \
 	aarch64/include/mach/aarch64/mach_aarch64.defs \
 	aarch64/include/mach/aarch64/mach_aarch64_types.h \
 	aarch64/include/mach/aarch64/machine_types.defs \
+	aarch64/include/mach/aarch64/multiboot.h \
 	aarch64/include/mach/aarch64/syscall_sw.h \
 	aarch64/include/mach/aarch64/thread_status.h \
 	aarch64/include/mach/aarch64/vm_param.h \

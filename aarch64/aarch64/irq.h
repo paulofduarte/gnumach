@@ -43,6 +43,8 @@ void __disable_irq (irq_t irq);
 
 extern void unmask_irq (unsigned int irq_nr);
 
+extern int pic_mode;
+
 #endif /* device/intr.h legacy */
 
 

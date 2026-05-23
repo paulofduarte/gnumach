@@ -19,3 +19,11 @@
 #include "aarch64/irq.h"
 
 struct irq_src	*root_irq_src;
+
+/*
+ *	device/intr.c exposes IRQGETPICMODE through irqgetstat(), and reads
+ *	pic_mode to report which interrupt-controller mode the kernel is
+ *	using.  On aarch64 there is no PIC/APIC distinction; the GIC is the
+ *	only option, so report a fixed value here.
+ */
+int pic_mode = 0;

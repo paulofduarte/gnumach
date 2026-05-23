@@ -30,6 +30,7 @@
 #include <kern/startup.h>
 #include <kern/bootstrap.h>
 #include <kern/boot_script.h>
+#include <mach/machine/multiboot.h>
 #include <string.h>
 
 #include <device/intr.h>	/* FIXME */
@@ -54,7 +55,8 @@ typedef struct
 
 const char *kernel_cmdline;
 
-char /*struct start_info*/ boot_info;
+static void load_boot_modules_from_dtb(void);
+
 struct irqdev irqtab;
 int iunit[1];
 interrupt_handler_fn ivect[1];
@@ -333,18 +335,45 @@ void __attribute__((noreturn)) c_boot_entry(dtb_t dtb)
 	machine_slot[0].cpu_type = CPU_TYPE_ARM64;
 	init_percpu(0);
 
+	load_boot_modules_from_dtb();
+
 	setup_main();
 	__builtin_unreachable();
 }
 
-void machine_exec_boot_script(void)
+/*
+ *	On x86 this is filled in by the multiboot1 loader (see
+ *	i386/i386at/model_dep.c).  aarch64 doesn't get one of those, but
+ *	kern/bootstrap.c is structured around walking boot_info.mods_addr,
+ *	so we synthesise an equivalent table from the DTB's
+ *	/chosen/multiboot,module nodes during early boot.
+ */
+struct multiboot_raw_info boot_info;
+
+#define	BOOTSTRAP_MAX_MODULES	10
+static struct multiboot_module boot_modules[BOOTSTRAP_MAX_MODULES];
+
+/*
+ *	Walk /chosen/multiboot,module nodes in the DTB and translate each
+ *	into a multiboot_module entry that kern/bootstrap.c can consume
+ *	verbatim.  QEMU's -device guest-loader synthesises exactly these
+ *	nodes, so any module passed via guest-loader becomes available
+ *	through the standard mods_addr/mods_count interface.
+ *
+ *	noinline keeps this function's locals out of c_boot_entry's frame.
+ *	c_boot_entry's stack-local addresses are computed pre-MMU (sp still
+ *	physical), and pmap_bootstrap() switches sp into the high virtual
+ *	mapping mid-function.  An inlined version would have stack pointers
+ *	hoisted into callee-saved registers before the switch, leaving us
+ *	writing to physical addresses after the MMU is enabled.  A separate
+ *	frame avoids that by being built with sp already virtual.
+ */
+static __attribute__((noinline)) void load_boot_modules_from_dtb(void)
 {
-	struct dtb_node 	chosen, node;
-	struct dtb_prop 	prop;
+	struct dtb_node		chosen, node;
+	struct dtb_prop		prop;
 	unsigned short		address_cells, size_cells;
-	struct bootstrap_module	bmods[10];
-	int			i = 0, err, losers = 0;
-	const char		*args;
+	int			i = 0;
 	vm_offset_t		off;
 
 	chosen = dtb_node_by_path("/chosen");
@@ -352,51 +381,50 @@ void machine_exec_boot_script(void)
 		panic("No chosen node in DTB\n");
 
 	dtb_for_each_child (chosen, node) {
-		if (dtb_node_is_compatible(&node, "multiboot,module")) {
-			assert(i < 10);	/* 10 boot modules ought to be enough for anybody */
-			prop = dtb_node_find_prop(&node, "bootargs");
-			if (DTB_IS_SENTINEL(prop))
-				panic("No bootargs for bootstrap module %d %s\n", i, node.name);
-			args = (const char *) prop.data;
-			printf("module %d: %s\n", i, args);
+		if (!dtb_node_is_compatible(&node, "multiboot,module"))
+			continue;
+		if (i >= BOOTSTRAP_MAX_MODULES)
+			panic("Too many bootstrap modules (max %d)\n",
+			      BOOTSTRAP_MAX_MODULES);
 
-			prop = dtb_node_find_prop(&node, "reg");
-			assert(!DTB_IS_SENTINEL(prop));
-			address_cells = node.address_cells;
-			size_cells = node.size_cells;
+		prop = dtb_node_find_prop(&node, "bootargs");
+		if (DTB_IS_SENTINEL(prop))
+			panic("No bootargs for bootstrap module %d %s\n",
+			      i, node.name);
+		printf("module %d: %s\n", i, (const char *) prop.data);
+		boot_modules[i].string = (vm_offset_t) prop.data;
 
-			/*
-			 *	Work around an apparent QEMU guest-laoder bug,
-			 *	where it unconditionally uses address/size cell
-			 *	size of 2, yet doesn't set (or respect previously
-			 *	set) #address-cells / #size-cells properties in
-			 *	the parent node.
-			 */
-			if (prop.length == 16 && address_cells == 2 && size_cells == 1)
-				size_cells = 2;
+		prop = dtb_node_find_prop(&node, "reg");
+		assert(!DTB_IS_SENTINEL(prop));
+		address_cells = node.address_cells;
+		size_cells = node.size_cells;
 
-			off = 0;
-			bmods[i].mod_start = dtb_prop_read_cells(&prop, address_cells, &off);
-			bmods[i].mod_end = bmods[i].mod_start + dtb_prop_read_cells(&prop, size_cells, &off);
+		/*
+		 *	Work around an apparent QEMU guest-loader bug,
+		 *	where it unconditionally uses address/size cell
+		 *	size of 2, yet doesn't set (or respect previously
+		 *	set) #address-cells / #size-cells properties in
+		 *	the parent node.
+		 */
+		if (prop.length == 16 && address_cells == 2 && size_cells == 1)
+			size_cells = 2;
 
-			/* FIXME: we probably should make a copy of this string */
-			err = boot_script_parse_line(&bmods[i], args);
-			if (err) {
-				printf("Error: %s\n", boot_script_error_string(err));
-				losers++;
-			}
-			i++;
-		}
+		off = 0;
+		boot_modules[i].mod_start =
+			dtb_prop_read_cells(&prop, address_cells, &off);
+		boot_modules[i].mod_end = boot_modules[i].mod_start
+			+ dtb_prop_read_cells(&prop, size_cells, &off);
+		boot_modules[i].reserved = 0;
+		i++;
 	}
+
 	if (i == 0)
 		panic("No bootstrap modules loaded with Mach\n");
-	if (losers)
-		panic("Failed to parse boot script\n");
+
+	boot_info.mods_count = i;
+	boot_info.mods_addr = (vm_offset_t) boot_modules;
+	boot_info.flags |= MULTIBOOT_MODS;
 	printf("%d bootstrap modules\n", i);
-	err = boot_script_exec();
-	if (err)
-		panic("Failed to execute boot script: %s\n", boot_script_error_string(err));
-	/* TODO free memory */
 }
 
 vm_offset_t timemmap(dev_t dev, vm_offset_t off, vm_prot_t prot)
