@@ -39,12 +39,23 @@ if !HOST_aarch64
 TESTS += tests/test-multiboot
 endif
 TESTS += $(USER_TESTS)
+# tests/test-multiboot-module-aarch64 exercises the multiboot,module
+# DTB convention via QEMU's -device guest-loader — the alternate
+# bootstrap path for users hand-building modules with u-boot's `fdt
+# mknod` per aarch64/BOOTING.  The rest of the test suite runs via
+# GRUB + linux,initrd-* (the standard arm64 boot protocol), so this
+# is the only test that gates the multiboot,module reader against
+# regressions.
+if HOST_aarch64
+TESTS += tests/test-multiboot-module-aarch64
+endif
 
 EXTRA_DIST += \
 	tests/README \
 	tests/grub.cfg.single.template \
 	tests/uboot.script.template \
 	tests/run-qemu.sh.template \
+	tests/run-multiboot-module-qemu.sh.template \
 	tests/include/syscalls.h \
 	tests/include/testlib.h \
 	tests/include/device/cons.h \

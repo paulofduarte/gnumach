@@ -305,6 +305,31 @@ tests/test-%: $(TEST_DEPS) $(srcdir)/tests/run-qemu.sh.template
 		>$@
 	chmod +x $@
 
+# Module load address for the multiboot,module test: RAM_BASE + 256 MB
+# under -M virt (RAM_BASE = 0x40000000), well clear of the kernel
+# image's load area and pmap_bootstrap's page-table allocations.  The
+# DTB node `reg` property guest-loader synthesises exposes this
+# address to gnumach.
+if HOST_aarch64
+TEST_MULTIBOOT_MODULE_ADDR = 0x50000000
+
+tests/test-multiboot-module-aarch64: tests/module-hello $(GNUMACH)	\
+				     $(srcdir)/tests/run-multiboot-module-qemu.sh.template
+	< $(srcdir)/tests/run-multiboot-module-qemu.sh.template	\
+		sed -e "s|QEMU_BIN|$(QEMU_BIN)|g"		\
+		    -e "s|QEMU_OPTS|$(QEMU_OPTS)|g"		\
+		    -e "s|GNUMACH_BIN|$(GNUMACH)|g"		\
+		    -e "s|GUEST_LOADER_ADDR|$(TEST_MULTIBOOT_MODULE_ADDR)|g"	\
+		    -e "s|TEST_START_MARKER|$(TEST_START_MARKER)|g"	\
+		    -e "s|TEST_SUCCESS_MARKER|$(TEST_SUCCESS_MARKER)|g"	\
+		    -e "s|TEST_FAILURE_MARKER|$(TEST_FAILURE_MARKER)|g"	\
+		>$@
+	chmod +x $@
+
+clean-test-multiboot-module-aarch64:
+	rm -f tests/test-multiboot-module-aarch64 tests/test-multiboot-module-aarch64.raw
+endif
+
 clean-test-%:
 	rm -f tests/test-$* tests/test-$*.iso tests/test-$*.log tests/test-$*.raw tests/test-$*.trs tests/module-$*
 
