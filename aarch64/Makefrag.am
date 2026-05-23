@@ -17,10 +17,80 @@
 # Building a distribution.
 #
 EXTRA_DIST += \
+	aarch64/aarch64/aarch64asm.sym \
 	aarch64/aarch64/mach_aarch64.srv \
 	aarch64/include/mach/aarch64
 
 if HOST_aarch64
+
+#
+# Source files for the aarch64 kernel.
+#
+
+libkernel_a_SOURCES += \
+	aarch64/aarch64/ast.h \
+	aarch64/aarch64/boot.S \
+	aarch64/aarch64/bits/id_aa64.h \
+	aarch64/aarch64/bits/mair.h \
+	aarch64/aarch64/bits/pte.h \
+	aarch64/aarch64/bits/hcr.h \
+	aarch64/aarch64/bits/sctlr.h \
+	aarch64/aarch64/bits/spsr.h \
+	aarch64/aarch64/bits/tcr.h \
+	aarch64/aarch64/conf.c \
+	aarch64/aarch64/cpu_number.h \
+	aarch64/aarch64/cswitch.S \
+	aarch64/aarch64/fpu.h \
+	aarch64/aarch64/fpu.c \
+	aarch64/aarch64/hwcaps.h \
+	aarch64/aarch64/hwcaps.c \
+	aarch64/aarch64/irq.c \
+	aarch64/aarch64/locore.h \
+	aarch64/aarch64/locore.S \
+	aarch64/aarch64/mach_aarch64.c \
+	aarch64/aarch64/pcb.c \
+	aarch64/aarch64/percpu.c \
+	aarch64/aarch64/percpu.h \
+	aarch64/aarch64/pmap.h \
+	aarch64/aarch64/pmap.c \
+	aarch64/aarch64/setjmp.h \
+	aarch64/aarch64/spl.h \
+	aarch64/aarch64/strings.c \
+	aarch64/aarch64/task.c \
+	aarch64/aarch64/task.h \
+	aarch64/aarch64/thread.h \
+	aarch64/aarch64/trap.c \
+	aarch64/aarch64/vm_param.h \
+	aarch64/aarch64/model_dep.c \
+	aarch64/aarch64/undef.c \
+	aarch64/arm/gic-v2.h \
+	aarch64/arm/gic-v2.c \
+	aarch64/arm/pl011.h \
+	aarch64/arm/pl011.c \
+	aarch64/arm/psci.h \
+	aarch64/arm/psci.c \
+	aarch64/arm/timer.h \
+	aarch64/arm/timer.c \
+	device/dtb.h \
+	device/dtb.c \
+	device/cirbuf.c
+
+
+#
+# Automatically generated source files.
+#
+# See Makerules.mig.am.
+#
+nodist_lib_dep_tr_for_defs_a_SOURCES += \
+	aarch64/aarch64/mach_aarch64.server.defs.c
+
+nodist_libkernel_a_SOURCES += \
+	aarch64/aarch64/mach_aarch64.server.c \
+	aarch64/aarch64/mach_aarch64.server.h \
+	aarch64/aarch64/mach_aarch64.server.msgids
+
+nodist_libkernel_a_SOURCES += \
+	aarch64/aarch64/aarch64asm.h
 
 #
 # Installation.
@@ -39,5 +109,13 @@ include_mach_aarch64_HEADERS = \
 	aarch64/include/mach/aarch64/thread_status.h \
 	aarch64/include/mach/aarch64/vm_param.h \
 	aarch64/include/mach/aarch64/vm_types.h
+
+AM_CFLAGS += -mno-outline-atomics
+
+AM_CFLAGS += -static-pie -mcmodel=tiny -mgeneral-regs-only
+gnumach_LINKFLAGS += -T '$(srcdir)'/aarch64/ldscript -static -pie --no-dynamic-linker
+
+# Hack to make gnumach.elf the ELF (useful for debugging), and bare gnumach the bootable image.
+gnumach_LINKFLAGS += $(gnumach_LDADD) -o gnumach.elf && $(OBJCOPY) -O binary gnumach.elf gnumach && :
 
 endif # HOST_aarch64

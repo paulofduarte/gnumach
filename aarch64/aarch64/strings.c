@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Free Software Foundation.
+ * Copyright (c) 2024 Free Software Foundation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,23 +16,44 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef	_MACH_AARCH64_VM_PARAM_H_
-#define _MACH_AARCH64_VM_PARAM_H_
+#include <string.h>
+#include <sys/types.h>
 
-#include <mach/machine/vm_types.h>
+/* Nothing Aarch64-specific about these.  */
 
-#ifdef KERNEL
-#include "aarch64/vm_param.h"
-#endif
+void *memset(void *_s, int c, size_t n)
+{
+	char *s = _s;
+	size_t i;
 
-#define BYTE_SIZE		8	/* byte size in bits */
+	for (i = 0; i < n ; i++)
+		s[i] = c;
 
-/*
- *	TODO: Exporting VM_MAX_ADDRESS basically locks in
- *	VM_AARCH64_T0SZ being 48.  Consider dropping it from this
- *	public header once userland no longer depends on it.
- */
-#define VM_MIN_ADDRESS		(0ULL)
-#define VM_MAX_ADDRESS		(0x1000000000000ULL)
+	return _s;
+}
 
-#endif	/* _MACH_AARCH64_VM_PARAM_H_ */
+void *memcpy(void *_d, const void *_s, size_t n)
+{
+	char *d = _d;
+	const char *s = _s;
+	size_t i;
+
+	for (i = 0; i < n; i++)
+		d[i] = s[i];
+
+	return _d;
+}
+
+int memcmp(const void *_s1, const void *_s2, size_t n)
+{
+	const char *s1 = _s1;
+	const char *s2 = _s2;
+	size_t i;
+
+	for (i = 0; i < n; i++) {
+		if (s1[i] != s2[i])
+			return s1[i] - s2[i];
+	}
+
+	return 0;
+}

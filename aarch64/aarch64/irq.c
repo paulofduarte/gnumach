@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Free Software Foundation.
+ * Copyright (c) 2024 Free Software Foundation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,23 +16,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef	_MACH_AARCH64_VM_PARAM_H_
-#define _MACH_AARCH64_VM_PARAM_H_
+#include "aarch64/irq.h"
 
-#include <mach/machine/vm_types.h>
-
-#ifdef KERNEL
-#include "aarch64/vm_param.h"
-#endif
-
-#define BYTE_SIZE		8	/* byte size in bits */
-
-/*
- *	TODO: Exporting VM_MAX_ADDRESS basically locks in
- *	VM_AARCH64_T0SZ being 48.  Consider dropping it from this
- *	public header once userland no longer depends on it.
- */
-#define VM_MIN_ADDRESS		(0ULL)
-#define VM_MAX_ADDRESS		(0x1000000000000ULL)
-
-#endif	/* _MACH_AARCH64_VM_PARAM_H_ */
+struct irq_src	*root_irq_src;

@@ -16,23 +16,29 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef	_MACH_AARCH64_VM_PARAM_H_
-#define _MACH_AARCH64_VM_PARAM_H_
+/* TODO: This should not be a public header.  */
 
-#include <mach/machine/vm_types.h>
+#ifndef _MACH_AARCH64_EXEC_ELF_H_
+#define _MACH_AARCH64_EXEC_ELF_H_
 
-#ifdef KERNEL
-#include "aarch64/vm_param.h"
-#endif
+typedef unsigned int	Elf32_Addr;
+typedef unsigned short	Elf32_Half;
+typedef unsigned int	Elf32_Off;
+typedef signed int	Elf32_Sword;
+typedef unsigned int	Elf32_Word;
 
-#define BYTE_SIZE		8	/* byte size in bits */
+typedef uint64_t	Elf64_Addr;
+typedef uint64_t	Elf64_Off;
+typedef int32_t		Elf64_Shalf;
+typedef int32_t		Elf64_Sword;
+typedef uint32_t	Elf64_Word;
+typedef int64_t		Elf64_Sxword;
+typedef uint64_t	Elf64_Xword;
+typedef uint16_t	Elf64_Half;
 
-/*
- *	TODO: Exporting VM_MAX_ADDRESS basically locks in
- *	VM_AARCH64_T0SZ being 48.  Consider dropping it from this
- *	public header once userland no longer depends on it.
- */
-#define VM_MIN_ADDRESS		(0ULL)
-#define VM_MAX_ADDRESS		(0x1000000000000ULL)
 
-#endif	/* _MACH_AARCH64_VM_PARAM_H_ */
+#define MY_ELF_CLASS	ELFCLASS64
+#define MY_EI_DATA	ELFDATA2LSB
+#define MY_E_MACHINE	EM_AARCH64
+
+#endif /* _MACH_AARCH64_EXEC_ELF_H_ */

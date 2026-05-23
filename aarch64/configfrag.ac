@@ -13,10 +13,14 @@ dnl "AS IS" CONDITION.  THE FREE SOFTWARE FOUNDATION DISCLAIMS ANY
 dnl LIABILITY OF ANY KIND FOR ANY DAMAGES WHATSOEVER RESULTING FROM THE
 dnl USE OF THIS SOFTWARE.
 
+# Nothing here at the moment.
+
 [case $host_cpu in
   aarch64)]
     AM_CONDITIONAL([HOST_aarch64], [true])
 
+    # Determines the size of the CPU cache line.
+    AC_DEFINE([CPU_L1_SHIFT], [6], [CPU_L1_SHIFT])
     [
     # Does the architecture provide machine-specific interfaces?
     mach_machine_routines=1

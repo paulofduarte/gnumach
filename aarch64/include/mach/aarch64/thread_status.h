@@ -40,4 +40,6 @@ struct aarch64_float_state {
 };
 #define AARCH64_FLOAT_STATE_COUNT	(sizeof(struct aarch64_float_state) / sizeof(unsigned int))
 
+#define AARCH64_REGS_SEGS_STATE 1
+
 #endif	/* _MACH_AARHC64_THREAD_STATUS_H_ */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Free Software Foundation.
+ * Copyright (c) 2024 Free Software Foundation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,23 +16,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef	_MACH_AARCH64_VM_PARAM_H_
-#define _MACH_AARCH64_VM_PARAM_H_
+#ifndef	_AARCH64_MACHINE_ROUTINES_H_
+#define	_AARCH64_MACHINE_ROUTINES_H_
 
-#include <mach/machine/vm_types.h>
+#define	MACHINE_SERVER		mach_aarch64_server
+#define	MACHINE_SERVER_HEADER	"aarch64/aarch64/mach_aarch64.server.h"
+#define	MACHINE_SERVER_ROUTINE	mach_aarch64_server_routine
 
-#ifdef KERNEL
-#include "aarch64/vm_param.h"
-#endif
+#endif /* _AARCH64_MACHINE_ROUTINES_H_ */
 
-#define BYTE_SIZE		8	/* byte size in bits */
-
-/*
- *	TODO: Exporting VM_MAX_ADDRESS basically locks in
- *	VM_AARCH64_T0SZ being 48.  Consider dropping it from this
- *	public header once userland no longer depends on it.
- */
-#define VM_MIN_ADDRESS		(0ULL)
-#define VM_MAX_ADDRESS		(0x1000000000000ULL)
-
-#endif	/* _MACH_AARCH64_VM_PARAM_H_ */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Free Software Foundation.
+ * Copyright (c) 2024 Free Software Foundation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,23 +16,16 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef	_MACH_AARCH64_VM_PARAM_H_
-#define _MACH_AARCH64_VM_PARAM_H_
+#include <mach/machine/mach_aarch64_types.h>
 
-#include <mach/machine/vm_types.h>
+extern uint32_t	hwcaps[HWCAPS_COUNT];
 
-#ifdef KERNEL
-#include "aarch64/vm_param.h"
-#endif
+extern uint32_t	hwcap_internal;
 
-#define BYTE_SIZE		8	/* byte size in bits */
+#define HWCAP_INT_PAN			0x01		/* privileged access never */
+#define HWCAP_INT_EPAN			0x02		/* extended privileged access never */
+#define HWCAP_INT_ASID16		0x04		/* 16-bit ASID */
+#define HWCAP_INT_UAO			0x08		/* user access override */
+#define HWCAP_INT_NV2			0x10		/* nested virtualization v2 */
 
-/*
- *	TODO: Exporting VM_MAX_ADDRESS basically locks in
- *	VM_AARCH64_T0SZ being 48.  Consider dropping it from this
- *	public header once userland no longer depends on it.
- */
-#define VM_MIN_ADDRESS		(0ULL)
-#define VM_MAX_ADDRESS		(0x1000000000000ULL)
-
-#endif	/* _MACH_AARCH64_VM_PARAM_H_ */
+extern void	hwcaps_init(void);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Free Software Foundation.
+ * Copyright (c) 2024 Free Software Foundation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,23 +16,21 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef	_MACH_AARCH64_VM_PARAM_H_
-#define _MACH_AARCH64_VM_PARAM_H_
+#ifndef _AARCH64_CPU_NUMBER_H_
+#define _AARCH64_CPU_NUMBER_H_
 
-#include <mach/machine/vm_types.h>
+#if NCPUS > 1
 
-#ifdef KERNEL
-#include "aarch64/vm_param.h"
+#ifndef __ASSEMBLER__
+static inline int cpu_number(void)
+{
+	int		mycpu;
+
+	asm("mrs %0, TPIDRRO_EL0" : "=r"(mycpu));
+	return mycpu;
+}
 #endif
 
-#define BYTE_SIZE		8	/* byte size in bits */
+#endif
 
-/*
- *	TODO: Exporting VM_MAX_ADDRESS basically locks in
- *	VM_AARCH64_T0SZ being 48.  Consider dropping it from this
- *	public header once userland no longer depends on it.
- */
-#define VM_MIN_ADDRESS		(0ULL)
-#define VM_MAX_ADDRESS		(0x1000000000000ULL)
-
-#endif	/* _MACH_AARCH64_VM_PARAM_H_ */
+#endif /* _AARCH64_CPU_NUMBER_H_ */

@@ -1,0 +1,41 @@
+/*
+ * Copyright (c) 2024 Free Software Foundation.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include "aarch64/thread.h"
+#include <kern/thread.h>
+
+offset	thread				th	kernel_stack
+offset	thread				th	swap_func
+expr	&STACK_AKS(0)->k_regs					KSS_REGS
+size	aarch64_kernel_state		aks
+size	aarch64_exception_link		ael
+size	aarch64_thread_state		ats
+size	aarch64_kernel_exception_state	akes
+
+offset	aarch64_thread_state		ats	x[0]		ATS_X
+offset	aarch64_thread_state		ats	sp
+offset	aarch64_thread_state		ats	pc
+offset	aarch64_thread_state		ats	tpidr_el0
+offset	aarch64_thread_state		ats	cpsr
+
+offset	aarch64_kernel_exception_state	akes	x[0]		AKES_X
+offset	aarch64_kernel_exception_state	akes	cpsr
+offset	aarch64_kernel_exception_state	akes	pc
+
+offset	percpu				pc	active_thread	PERCPU_ACTIVE_THREAD
+offset	percpu				pc	active_stack	PERCPU_ACTIVE_STACK

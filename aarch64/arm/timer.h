@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Free Software Foundation.
+ * Copyright (c) 2024 Free Software Foundation.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,23 +16,14 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef	_MACH_AARCH64_VM_PARAM_H_
-#define _MACH_AARCH64_VM_PARAM_H_
+#include <device/dtb.h>
 
-#include <mach/machine/vm_types.h>
+struct irq_ctlr;
 
-#ifdef KERNEL
-#include "aarch64/vm_param.h"
-#endif
+extern void cnt_init(dtb_node_t node);
 
-#define BYTE_SIZE		8	/* byte size in bits */
+extern void cnt_set_interrupt_parent(
+	dtb_node_t	node,
+	struct irq_ctlr	*ctlr);
 
-/*
- *	TODO: Exporting VM_MAX_ADDRESS basically locks in
- *	VM_AARCH64_T0SZ being 48.  Consider dropping it from this
- *	public header once userland no longer depends on it.
- */
-#define VM_MIN_ADDRESS		(0ULL)
-#define VM_MAX_ADDRESS		(0x1000000000000ULL)
-
-#endif	/* _MACH_AARCH64_VM_PARAM_H_ */
+extern void startrtclock(void);

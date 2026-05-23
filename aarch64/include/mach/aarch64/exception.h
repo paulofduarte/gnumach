@@ -47,11 +47,10 @@
 
 #define EXC_AARCH64_SVC			1	/* SVC that's not a valid syscall, subcode contains immediate */
 
-/*
-Not yet:
-#define EXC_AARCH64_HVC			2	HVC, subcode contains immediate
-#define EXC_AARCH64_SMC			3	SMC, subcode contains immediate
-*/
+#ifdef notyet
+#define EXC_AARCH64_HVC			2	/* HVC, subcode contains immediate */
+#define EXC_AARCH64_SMC			3	/* SMC, subcode contains immediate */
+#endif
 
 /*
  *	EXC_BAD_ACCESS
@@ -68,10 +67,9 @@ Not yet:
 #define EXC_AARCH64_PAC			103	/* PAC failure, subcode describes the key */
 #define EXC_AARCH64_BTI			104	/* BTI failure, subcode contains BTYPE */
 
-/*
-Not yet:
-#define EXC_AARCH64_MTE			105	MTE failure
-*/
+#ifdef notyet
+#define EXC_AARCH64_MTE			105	/* MTE failure */
+#endif
 
 /*
  *	EXC_BREAKPOINT
@@ -81,10 +79,9 @@ Not yet:
 #define EXC_AARCH64_SS			2	/* software single step, subcode contains EX flag, or -1 if unknown */
 #define EXC_AARCH64_BREAKPT		3	/* hardware breakpoint */
 
-/*
-Not yet:
-#define EXC_AARCH64_WATCHPT_READ	4	hardware watchpoint (read), subcode contains accessed address
-#define EXC_AARCH64_WATCHPT_WRITE	5	hardware watchpoint (write), subcode contains accessed address
-*/
+#ifdef notyet
+#define EXC_AARCH64_WATCHPT_READ	4	/* hardware watchpoint (read), subcode contains accessed address */
+#define EXC_AARCH64_WATCHPT_WRITE	5	/* hardware watchpoint (write), subcode contains accessed address */
+#endif
 
 #endif	/* _MACH_AARCH64_EXCEPTION_H_ */
