@@ -20,6 +20,7 @@
 #include "aarch64/locore.h"
 #include "aarch64/hwcaps.h"
 #include "aarch64/fpu.h"
+#include "aarch64/pmap.h"
 #include "aarch64/bits/spsr.h"
 #include "arm/gic-v2.h"
 #include "arm/pl011.h"
@@ -313,6 +314,15 @@ void __attribute__((noreturn)) c_boot_entry(dtb_t dtb)
 	kr = dtb_load(dtb);
 	assert(kr == KERN_SUCCESS);
 
+	/*
+	 *	Discover boot modules and tell pmap about their physical
+	 *	ranges *before* pmap_bootstrap_misc() runs vm_page_load_heap,
+	 *	so module-occupied pages stay outside the heap and default
+	 *	to VM_PT_RESERVED — that's the contract free_bootstrap_pages
+	 *	relies on once the kernel has finished exec'ing each module.
+	 */
+	load_boot_modules_from_dtb();
+
 	pmap_bootstrap_misc();
 	load_exception_vector_table();
 
@@ -334,8 +344,6 @@ void __attribute__((noreturn)) c_boot_entry(dtb_t dtb)
 	machine_slot[0].is_cpu = TRUE;
 	machine_slot[0].cpu_type = CPU_TYPE_ARM64;
 	init_percpu(0);
-
-	load_boot_modules_from_dtb();
 
 	setup_main();
 	__builtin_unreachable();
@@ -392,7 +400,13 @@ static __attribute__((noinline)) void load_boot_modules_from_dtb(void)
 			panic("No bootargs for bootstrap module %d %s\n",
 			      i, node.name);
 		printf("module %d: %s\n", i, (const char *) prop.data);
-		boot_modules[i].string = (vm_offset_t) prop.data;
+		/*
+		 * kern/bootstrap.c calls phystokv(string) to dereference the
+		 * cmdline, so we have to store a physical address here even
+		 * though prop.data is a kernel-virtual pointer into the DTB
+		 * (which itself was phystokv'd earlier in c_boot_entry).
+		 */
+		boot_modules[i].string = kvtophys((vm_offset_t) prop.data);
 
 		prop = dtb_node_find_prop(&node, "reg");
 		assert(!DTB_IS_SENTINEL(prop));
@@ -415,6 +429,18 @@ static __attribute__((noinline)) void load_boot_modules_from_dtb(void)
 		boot_modules[i].mod_end = boot_modules[i].mod_start
 			+ dtb_prop_read_cells(&prop, size_cells, &off);
 		boot_modules[i].reserved = 0;
+
+		/*
+		 * Keep the module's physical pages out of the heap range
+		 * passed to vm_page_load_heap.  vm_page_init will then
+		 * default them to VM_PT_RESERVED — exactly what
+		 * free_bootstrap_pages expects when it later releases
+		 * them back to the allocator after the kernel has exec'd
+		 * the module.
+		 */
+		pmap_reserve_phys_range(round_page(boot_modules[i].mod_start),
+		                        round_page(boot_modules[i].mod_end));
+
 		i++;
 	}
 
@@ -422,7 +448,13 @@ static __attribute__((noinline)) void load_boot_modules_from_dtb(void)
 		panic("No bootstrap modules loaded with Mach\n");
 
 	boot_info.mods_count = i;
-	boot_info.mods_addr = (vm_offset_t) boot_modules;
+	/*
+	 * Same phystokv contract as for the per-module .string field:
+	 * kern/bootstrap.c reads `bmods = phystokv(boot_info.mods_addr)`,
+	 * so we have to give it a physical address even though we built
+	 * the boot_modules[] array as ordinary kernel-virtual storage.
+	 */
+	boot_info.mods_addr = kvtophys((vm_offset_t) boot_modules);
 	boot_info.flags |= MULTIBOOT_MODS;
 	printf("%d bootstrap modules\n", i);
 }

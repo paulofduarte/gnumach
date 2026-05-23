@@ -77,6 +77,18 @@ extern void pmap_discover_physical_memory(const struct dtb_node *node);
 extern void pmap_bootstrap(void);
 extern void pmap_bootstrap_misc(void);
 
+/*
+ *	pmap_reserve_phys_range:
+ *
+ *	Record a physical range that should not be added to the heap when
+ *	pmap_bootstrap_misc() calls vm_page_load_heap().  Must be called
+ *	after pmap_discover_physical_memory() (so phys_mem_* are known)
+ *	and before pmap_bootstrap_misc() (so heap-range sizing sees the
+ *	reservation).  Used for boot modules whose physical pages must
+ *	stay VM_PT_RESERVED until free_bootstrap_pages() releases them.
+ */
+extern void pmap_reserve_phys_range(phys_addr_t start, phys_addr_t end);
+
 extern void pmap_zero_page(phys_addr_t);
 extern void pmap_copy_page(phys_addr_t, phys_addr_t);
 

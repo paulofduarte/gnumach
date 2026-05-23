@@ -149,6 +149,35 @@ vm_offset_t		kernel_virtual_end;
 static phys_addr_t	phys_mem_start;
 static vm_size_t	phys_mem_size;
 
+/*
+ *	Lowest physical address occupied by a reserved range that needs to
+ *	stay outside the page allocator's free pool — currently used to
+ *	keep boot modules' physical pages marked VM_PT_RESERVED so
+ *	free_bootstrap_pages() can release them back once the kernel has
+ *	finished exec'ing them.
+ *
+ *	Set by pmap_reserve_phys_range(); consumed in pmap_bootstrap_misc
+ *	when sizing the heap range passed to vm_page_load_heap().  Any
+ *	pages between this address and phys_mem_start + phys_mem_size
+ *	stay registered with vm_page but default to VM_PT_RESERVED, which
+ *	is exactly the contract free_bootstrap_pages() expects.  Default
+ *	value of (phys_addr_t)-1 means "no reservation — use the full
+ *	heap range".
+ *
+ *	TODO: this is a single-segment carve-out (everything above the
+ *	lowest module is lost to the allocator).  A multi-segment heap
+ *	would let us recover the gap between modules and the top of RAM.
+ *	The vm_page subsystem supports up to 4 segments per type.
+ */
+static phys_addr_t	module_phys_min	= (phys_addr_t) -1;
+
+void pmap_reserve_phys_range(phys_addr_t start, phys_addr_t end)
+{
+	(void) end;
+	if (start < module_phys_min)
+		module_phys_min = start;
+}
+
 extern const void	__text_start;
 extern const void	_image_end;
 
@@ -447,7 +476,19 @@ void pmap_bootstrap_misc(void)
 	kernel_pmap->l0_base = PT_ENTRY_NULL;
 	kernel_pmap->asid = 0;
 
-	vm_page_load_heap(VM_PAGE_SEG_DMA, heap_start, phys_mem_start + phys_mem_size);
+	{
+		/*
+		 * Cap heap_end below any reserved physical range (e.g. boot
+		 * modules placed in the middle of RAM by QEMU's guest-loader).
+		 * Pages above heap_end stay registered with vm_page_load but
+		 * default to VM_PT_RESERVED — exactly the contract
+		 * free_bootstrap_pages() expects.
+		 */
+		phys_addr_t heap_end = phys_mem_start + phys_mem_size;
+		if (module_phys_min < heap_end)
+			heap_end = module_phys_min;
+		vm_page_load_heap(VM_PAGE_SEG_DMA, heap_start, heap_end);
+	}
 	pmap_init_mapwindows();
 
 	vm_fault_dirty_handling = TRUE;
