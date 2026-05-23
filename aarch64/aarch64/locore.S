@@ -406,8 +406,12 @@ ENTRY(_fpu_save_state)
 	stp	q26, q27, [x0], #32
 	stp	q28, q29, [x0], #32
 	stp	q30, q31, [x0], #32
-	mrs	x1, fpcr
-	mrs	x2, fpsr
+	/*
+	 * struct aarch64_float_state lays out fpsr at offset 0 from
+	 * here and fpcr at offset 8, so save in that order.
+	 */
+	mrs	x1, fpsr
+	mrs	x2, fpcr
 	stp	x1, x2, [x0], #32
 	stp	xzr, xzr, [x0]		/* FPMR ignored for now */
 	ret
@@ -434,9 +438,13 @@ ENTRY(_fpu_load_state)
 	ldp	q28, q29, [x0], #32
 	ldp	q30, q31, [x0], #32
 
+	/*
+	 * struct aarch64_float_state lays out fpsr first at offset 0,
+	 * then fpcr at offset 8 — mirror the save order above.
+	 */
 	ldp	x1, x2, [x0]
-	msr	fpcr, x1
-	msr	fpsr, x2
+	msr	fpsr, x1
+	msr	fpcr, x2
 	/* FPMR ignored for now */
 	ret
 END(_fpu_load_state)

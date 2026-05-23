@@ -324,12 +324,25 @@ kern_return_t thread_setstatus(
 			memcpy(USER_REGS(thread), ats, sizeof(struct aarch64_thread_state));
 			return KERN_SUCCESS;
 
-		case AARCH64_FLOAT_STATE:
+		case AARCH64_FLOAT_STATE: {
+			/*
+			 * MIG places `new_state[]` at offset 40 from the
+			 * Request message header, which is 8-byte aligned
+			 * but not 16-byte aligned.  alignof(struct
+			 * aarch64_float_state) is 16 (from the __int128
+			 * v[32] member), so the state pointer the MIG stub
+			 * hands us is intrinsically under-aligned even
+			 * though the buffer is structurally valid.  Copy
+			 * into an aligned local before validating/storing
+			 * so misaligned __int128 access doesn't matter.
+			 */
+			struct aarch64_float_state	aligned;
+
 			if (count < AARCH64_FLOAT_STATE_COUNT)
 				return KERN_INVALID_ARGUMENT;
-			if (((vm_offset_t) tstate) % alignof(struct aarch64_float_state))
-				return KERN_INVALID_ARGUMENT;
-			afs = (struct aarch64_float_state *) tstate;
+
+			memcpy(&aligned, tstate, sizeof(aligned));
+			afs = &aligned;
 
 			if (!validate_fpcr(afs->fpcr, old_fpr(thread, fpcr)))
 				return KERN_INVALID_ARGUMENT;
@@ -339,8 +352,9 @@ kern_return_t thread_setstatus(
 				return KERN_INVALID_ARGUMENT;
 
 			fpu_flush_state_write(thread);
-			memcpy(thread->pcb->afs, tstate, sizeof(struct aarch64_float_state));
+			memcpy(thread->pcb->afs, afs, sizeof(struct aarch64_float_state));
 			return KERN_SUCCESS;
+		}
 
 		default:
 			return KERN_INVALID_ARGUMENT;
