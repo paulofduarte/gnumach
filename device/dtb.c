@@ -346,7 +346,7 @@ static uint64_t read_cells(
 	unsigned short	size,
 	vm_size_t	*off)
 {
-	uint64_t	tmp;
+	const dtb_uint32_t	*p;
 
 	addr = (const unsigned char *) addr + *off;
 	*off += size * 4;
@@ -357,8 +357,19 @@ static uint64_t read_cells(
 		case 1:
 			return be32toh(*(const dtb_uint32_t *) addr);
 		case 2:
-			__builtin_memcpy(&tmp, addr, 8);
-			return __builtin_bswap64(tmp);
+			/*
+			 * DTB property data is only 4-byte aligned, but a
+			 * naive 8-byte memcpy gets fused by the compiler
+			 * into a single LDR Xt. With the MMU still off
+			 * during early boot all memory is treated as
+			 * Device-nGnRnE, where an 8-byte load against a
+			 * 4-byte-aligned address takes an alignment fault.
+			 * Read the two cells separately so the compiler is
+			 * forced to emit 4-byte loads.
+			 */
+			p = addr;
+			return ((uint64_t) be32toh(p[0]) << 32)
+			        | be32toh(p[1]);
 		default:
 			panic("Unimplemented cell size: %d\n", size);
 	}
