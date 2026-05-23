@@ -30,13 +30,20 @@ export GNUMACH
 
 include tests/user-qemu.mk
 
-TESTS += \
-	tests/test-multiboot \
-	$(USER_TESTS)
+# tests/test-multiboot is a host-side grub-file validator that checks
+# the produced ISO is multiboot1-spec-compliant.  Multiboot1 is x86-
+# only by design, so the validator is meaningless on aarch64 (which
+# boots via the arm64 image header / linux+initrd through GRUB's
+# arm64-efi target instead).
+if !HOST_aarch64
+TESTS += tests/test-multiboot
+endif
+TESTS += $(USER_TESTS)
 
 EXTRA_DIST += \
 	tests/README \
 	tests/grub.cfg.single.template \
+	tests/uboot.script.template \
 	tests/run-qemu.sh.template \
 	tests/include/syscalls.h \
 	tests/include/testlib.h \

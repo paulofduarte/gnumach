@@ -17,7 +17,7 @@
 
 set -e
 
-cmd="QEMU_BIN QEMU_OPTS -cdrom tests/test-TESTNAME.iso"
+cmd="QEMU_BIN QEMU_OPTS QEMU_BOOT_ARGS"
 log="tests/test-TESTNAME.raw"
 
 echo "temp log $log"

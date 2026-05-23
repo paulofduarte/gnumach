@@ -86,6 +86,9 @@ endif
 if HOST_x86_64
 $(eval $(call generate_mig_client,mach/x86_64,mach_i386))
 endif
+if HOST_aarch64
+$(eval $(call generate_mig_client,mach/aarch64,mach_aarch64))
+endif
 
 # NOTE: keep in sync with the rules above
 MIG_GEN_CC = \
@@ -99,8 +102,19 @@ MIG_GEN_CC = \
 	$(MIG_OUTDIR)/mach.user.c \
 	$(MIG_OUTDIR)/mach_host.user.c \
 	$(MIG_OUTDIR)/mach_port.user.c \
-	$(MIG_OUTDIR)/task_notify.server.c \
-	$(MIG_OUTDIR)/mach_i386.user.c
+	$(MIG_OUTDIR)/task_notify.server.c
+
+# Per-arch machine_interface stub: keep this in sync with the
+# arch-specific generate_mig_client calls above.
+if HOST_ix86
+MIG_GEN_CC += $(MIG_OUTDIR)/mach_i386.user.c
+endif
+if HOST_x86_64
+MIG_GEN_CC += $(MIG_OUTDIR)/mach_i386.user.c
+endif
+if HOST_aarch64
+MIG_GEN_CC += $(MIG_OUTDIR)/mach_aarch64.user.c
+endif
 
 #
 # compilation of user space tests and utilities
@@ -131,8 +145,16 @@ TESTSRC_TESTLIB= \
 	$(srcdir)/tests/testlib.c \
 	$(srcdir)/tests/testlib_thread_start.c
 
+# The testlib's per-arch memcpy/memset/memcmp: i386's hand-tuned asm
+# version vs aarch64's plain-C one in aarch64/aarch64/strings.c.
+if HOST_aarch64
+ARCH_STRINGS_C = $(srcdir)/aarch64/aarch64/strings.c
+else
+ARCH_STRINGS_C = $(srcdir)/i386/i386/strings.c
+endif
+
 SRC_TESTLIB= \
-	$(srcdir)/i386/i386/strings.c \
+	$(ARCH_STRINGS_C) \
 	$(srcdir)/kern/printf.c \
 	$(srcdir)/kern/strings.c \
 	$(srcdir)/util/atoi.c \
@@ -167,15 +189,27 @@ tests/module-%: $(srcdir)/tests/test-%.c $(SRC_TESTLIB) $(MACH_TESTINSTALL)
 #
 # Avoid removal of module-% files after building the ISO file
 #
-.PRECIOUS: tests/module-%
+.PRECIOUS: tests/module-% tests/boot-%.scr tests/test-%.img
 
 #
 # packaging of qemu bootable image and test runner
 #
 
 GNUMACH_ARGS = console=com0
-QEMU_OPTS = -m 2047 -nographic -no-reboot -boot d
+QEMU_OPTS = -nographic -no-reboot -boot d
 QEMU_GDB_PORT ?= 1234
+
+# Memory size depends on what the kernel's bootstrap pmap can map.
+# x86 builds use 2047 MB historically (the upper bound of the 32-bit
+# "low" memory gnumach manages directly).  aarch64's pmap_bootstrap
+# maps a single 1 GB L1 block in TTBR1, so vm_page's allocator faults
+# on memory beyond that — keep aarch64 well under 1 GB until the
+# kernel grows multi-block mappings.
+if HOST_aarch64
+QEMU_OPTS += -m 512
+else
+QEMU_OPTS += -m 2047
+endif
 
 if HOST_ix86
 QEMU_BIN = qemu-system-i386
@@ -185,9 +219,66 @@ if HOST_x86_64
 QEMU_BIN = qemu-system-x86_64
 QEMU_OPTS += -cpu core2duo-v1
 endif
+if HOST_aarch64
+QEMU_BIN = qemu-system-aarch64
+QEMU_OPTS += -M virt -cpu cortex-a72
+endif
 if enable_smp
 QEMU_OPTS += -smp 2
 endif
+
+# Per-arch boot delivery.  x86 boots from a multiboot ISO via
+# -cdrom.  aarch64 boots through u-boot running under QEMU: the
+# test FAT image contains gnumach, the test module, and a boot.scr
+# that uses u-boot's `fdt mknod` to inject the multiboot,module DTB
+# nodes gnumach's load_boot_modules_from_dtb() reads.  This is the
+# same convention real-hardware u-boot users follow per
+# aarch64/BOOTING — same kernel code path, same DTB shape on entry.
+#
+# UBOOT_BIN is exported by the Nix dev shell for HOST_aarch64; it
+# points at the u-boot.bin nixpkgs ships in pkgs.ubootQemuAarch64.
+if HOST_aarch64
+TEST_DEPS = tests/test-%.img
+QEMU_BOOT_ARGS = -bios $(UBOOT_BIN) -drive file=tests/test-TESTNAME.img,format=raw,if=virtio
+else
+TEST_DEPS = tests/test-%.iso
+QEMU_BOOT_ARGS = -cdrom tests/test-TESTNAME.iso
+endif
+
+# Module load address on aarch64: RAM_BASE + 256 MB.  pmap_bootstrap
+# maps a single 1 GB L1 block in TTBR1 and vm_page_load_heap caps
+# the heap below the lowest module's address, so memory above the
+# module is lost to the allocator (single-segment carve-out).
+# Placing the module at 256 MB leaves the heap a usable 256 MB —
+# enough for the vm_page bootstrap array + kernel image.  Multi-
+# segment heap is a follow-up that would lift this constraint.
+AARCH64_MODULE_ADDR = 0x50000000
+
+# Per-test u-boot script: substitutes the test name, module address,
+# and module size into the template, then wraps via mkimage as a
+# u-boot legacy script image (which u-boot's distro_bootcmd auto-
+# locates on virtio0:1 at boot).
+tests/boot-%.scr: $(srcdir)/tests/uboot.script.template tests/module-%
+	< $(srcdir)/tests/uboot.script.template				\
+		sed -e "s|TESTNAME|$*|g"				\
+		    -e "s|MODULE_ADDR|$(AARCH64_MODULE_ADDR)|g"		\
+		    -e "s|MODULE_SIZE|0x$$(printf '%x' $$(stat -c %s tests/module-$*))|g"	\
+		>tests/boot-$*.cmd
+	mkimage -A arm64 -T script -C none -d tests/boot-$*.cmd $@
+	rm -f tests/boot-$*.cmd
+
+# Per-test FAT image: 16 MB disk with a single FAT partition (MBR
+# from sfdisk; mtools writes the FAT inside at the 1 MB offset).
+# u-boot's bootflow scanner only finds boot.scr on partitioned
+# disks, hence the MBR — a bare FAT volume is silently skipped.
+tests/test-%.img: tests/module-% $(GNUMACH) tests/boot-%.scr
+	rm -f $@
+	truncate -s 16M $@
+	printf 'label: dos\n2048,, c, *\n' | sfdisk -q $@
+	mformat -i $@@@1M -v GNUMACH
+	mcopy -i $@@@1M $(GNUMACH) ::/gnumach
+	mcopy -i $@@@1M tests/module-$* ::/module-$*
+	mcopy -i $@@@1M tests/boot-$*.scr ::/boot.scr
 
 tests/test-%.iso: tests/module-% $(GNUMACH) $(srcdir)/tests/grub.cfg.single.template
 	rm -rf $(builddir)/tests/isofiles-$*
@@ -202,10 +293,11 @@ tests/test-%.iso: tests/module-% $(GNUMACH) $(srcdir)/tests/grub.cfg.single.temp
 	grub-mkrescue -o $@ $(builddir)/tests/isofiles-$*
 	rm -rf $(builddir)/tests/isofiles-$*
 
-tests/test-%: tests/test-%.iso $(srcdir)/tests/run-qemu.sh.template
-	< $(srcdir)/tests/run-qemu.sh.template			\
-		sed -e "s|TESTNAME|$(subst tests/test-,,$@)|g"	\
-		    -e "s/QEMU_OPTS/$(QEMU_OPTS)/g"		\
+tests/test-%: $(TEST_DEPS) $(srcdir)/tests/run-qemu.sh.template
+	< $(srcdir)/tests/run-qemu.sh.template				\
+		sed -e 's|QEMU_BOOT_ARGS|$(QEMU_BOOT_ARGS)|g'		\
+		    -e "s|TESTNAME|$(subst tests/test-,,$@)|g"		\
+		    -e "s/QEMU_OPTS/$(QEMU_OPTS)/g"			\
 		    -e "s/QEMU_BIN/$(QEMU_BIN)/g"			\
 		    -e "s/TEST_START_MARKER/$(TEST_START_MARKER)/g"	\
 		    -e "s/TEST_SUCCESS_MARKER/$(TEST_SUCCESS_MARKER)/g"	\

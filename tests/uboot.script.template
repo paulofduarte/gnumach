@@ -1,0 +1,71 @@
+# Copyright (C) 2026 Free Software Foundation
+#
+# This program is free software ; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation ; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY ; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with the program ; if not, write to the Free Software
+# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+# u-boot script: boots gnumach with a single bootstrap module via
+# the multiboot,module DTB convention documented in aarch64/BOOTING.
+# Loaded by u-boot's distro_bootcmd from boot.scr on virtio0:1.
+#
+# This script mirrors what a real-hardware u-boot user would type
+# manually: load kernel + module from storage, hand-build the
+# multiboot,module child of /chosen in the DTB, hand off via booti.
+# Tests should fail the same way real hardware would if any step
+# regresses.
+
+# Kernel goes well above u-boot's own data area and the DTB.
+setenv kernel_addr 0x42000000
+
+# Load files from the boot device's FAT partition (virtio 0:1).
+load virtio 0:1 ${kernel_addr} gnumach
+load virtio 0:1 MODULE_ADDR module-TESTNAME
+
+# u-boot resolves the DTB load address into ${fdtcontroladdr} at start-
+# up.  Reserve headroom for the new child node + properties.
+fdt addr ${fdtcontroladdr}
+fdt resize 1024
+
+# Multiboot,module convention from aarch64/BOOTING.  Two-cell
+# address/size so the reg property covers a 64-bit module address.
+fdt set /chosen \#address-cells <2>
+fdt set /chosen \#size-cells <2>
+fdt mknod /chosen module@MODULE_ADDR
+fdt set /chosen/module@MODULE_ADDR compatible "multiboot,kernel" "multiboot,module"
+fdt set /chosen/module@MODULE_ADDR reg <0 MODULE_ADDR 0 MODULE_SIZE>
+
+# bootargs payload mirrors tests/grub.cfg.single.template's x86
+# module line — a multi-word boot-script string so kern/bootstrap.c
+# takes the boot_script_task_create path (which threads
+# ${host-port} / ${device-port} / $(task-create) / $(task-resume)
+# through the boot-script interpreter) rather than the broken
+# single-word bootstrap_exec_compat path.  Use single quotes so
+# u-boot's hush parser doesn't expand the ${...} / $(...) tokens —
+# they need to reach /chosen/module/bootargs verbatim for the
+# kernel boot-script parser to find and substitute them.
+fdt set /chosen/module@MODULE_ADDR bootargs 'module-TESTNAME ${host-port} ${device-port} $(task-create) $(task-resume)'
+
+# Force the DTB low.  u-boot's default booti behaviour relocates
+# the DTB to the highest available memory before entering the
+# kernel — but gnumach's aarch64 pmap excludes the DTB region from
+# the vm_page heap (heap_start is bumped above the DTB), and the
+# single-segment heap is already capped below the lowest module.
+# A relocated-high DTB pushes heap_start past the module → heap
+# becomes empty → vm_page panics during bootstrap.  Pin the DTB
+# below the kernel's load area so it lands in the heap-excluded
+# kernel image region (which is already lost to the heap) instead
+# of stealing usable heap above the module.
+setenv fdt_high 0x42000000
+
+# Hand off — `booti` takes <kernel> <initrd|"-"> <dtb>.
+booti ${kernel_addr} - ${fdtcontroladdr}
