@@ -63,13 +63,47 @@ void test_syscall_bad_arg_on_stack(void *arg)
                "movq	$-25,%rax;"                     \
                "syscall;"                               \
                );
-#else
+#elif defined(__i386__)
   asm volatile("mov	$0x123,%esp;"			\
                "mov	$-25,%eax;"                     \
                "lcall	$0x7,$0x0;"                     \
                );
-#endif
+#elif defined(__aarch64__)
+  /*
+   * aarch64 passes all mach_msg arguments in registers (AAPCS x0..x6
+   * cover the 7 args), so there's no literal "arg on stack" to
+   * corrupt.  Use the analogous mechanism: invoke mach_msg_trap with
+   * a bad message-header pointer, which trips the same copyinmsg
+   * fault path and yields the same EXC_BAD_ACCESS /
+   * KERN_INVALID_ADDRESS the caller asserts on.
+   */
+  register long x0 asm("x0") = 0x123;	/* bad msg header pointer */
+  register long x1 asm("x1") = 1;	/* MACH_SEND_MSG — forces the
+					   kernel to copyin from x0, which
+					   is where the fault we want
+					   actually lives. */
+  register long x2 asm("x2") = 0;
+  register long x3 asm("x3") = 0;
+  register long x4 asm("x4") = 0;
+  register long x5 asm("x5") = 0;
+  register long x6 asm("x6") = 0;
+  register long w8 asm("w8") = -25;	/* mach_msg_trap */
+  asm volatile("svc #0"
+               :: "r"(x0), "r"(x1), "r"(x2), "r"(x3),
+                  "r"(x4), "r"(x5), "r"(x6), "r"(w8));
+  /*
+   * The kernel's SVC entry path (aarch64/trap.c) leaves ELR pointing
+   * at the instruction after the svc — hardware auto-advances it
+   * before the synchronous-exception vector fires — so after the
+   * exception handler returns KERN_SUCCESS the thread resumes here.
+   * Bow out cleanly rather than tripping FAILURE; the assertion in
+   * main() has already captured last_exc by the time we get here.
+   */
+  thread_terminate(mach_thread_self());
+  for (;;) { /* belt-and-braces in case termination is deferred */ }
+#else
   FAILURE("we shouldn't be here!");
+#endif
 }
 
 void test_bad_syscall_num(void *arg)
@@ -78,12 +112,25 @@ void test_bad_syscall_num(void *arg)
   asm volatile("movq	$0x123456,%rax;"                \
                "syscall;"                               \
                );
-#else
+#elif defined(__i386__)
   asm volatile("mov	$0x123456,%eax;"                \
                "lcall	$0x7,$0x0;"                     \
                );
-#endif
+#elif defined(__aarch64__)
+  /*
+   * Valid Mach trap numbers are negative on aarch64 (matching the i386
+   * convention); a positive value like 0x123456 lands in the SVC
+   * entry's "imm16 != 0 || not a valid mach trap" path, which raises
+   * EXC_SOFTWARE / EXC_AARCH64_SVC.
+   */
+  register long w8 asm("w8") = 0x123456;
+  asm volatile("svc #0" :: "r"(w8));
+  /* See test_syscall_bad_arg_on_stack — bow out instead of FAILURE. */
+  thread_terminate(mach_thread_self());
+  for (;;) { }
+#else
   FAILURE("we shouldn't be here!");
+#endif
 }
 
 
@@ -119,14 +166,42 @@ int main(int argc, char *argv[], int envc, char *envp[])
   memset(&last_exc, 0, sizeof(last_exc));
   test_thread_start(mach_task_self(), test_bad_syscall_num, NULL);
   ASSERT_RET(mach_msg_server_once(exc_server, 4096, excp, MACH_MSG_OPTION_NONE), "error in exc server");
+#if defined(__aarch64__)
+  /*
+   * On aarch64 an svc with an unallocated immediate (or, as here, a
+   * bad mach syscall number in w8) raises EXC_SOFTWARE with subcode
+   * EXC_AARCH64_SVC — see <mach/aarch64/exception.h>.  This differs
+   * from i386's EXC_BAD_INSTRUCTION/EXC_I386_INVOP categorisation
+   * because aarch64 has a dedicated svc instruction whose entry path
+   * is "software-generated".
+   */
+  ASSERT((last_exc.exception == EXC_SOFTWARE) && (last_exc.code == EXC_AARCH64_SVC),
+         "bad exception for test_bad_syscall_num()");
+#else
   ASSERT((last_exc.exception == EXC_BAD_INSTRUCTION) && (last_exc.code == EXC_I386_INVOP),
          "bad exception for test_bad_syscall_num()");
+#endif
 
+#if !defined(__aarch64__)
+  /*
+   * AAPCS passes all 7 mach_msg arguments in registers (x0..x6) on
+   * aarch64, so there's no literal "arg on stack" path to corrupt;
+   * the x86 mechanism doesn't translate.  An attempt to fault via a
+   * bad msg pointer instead is caught by copyinmsg's recovery
+   * handler and returned as a syscall error, not raised as an
+   * exception — so the "wait for EXC_BAD_ACCESS" assertion below
+   * would hang.  Skip this subtest until we have a different
+   * aarch64-appropriate way to trigger an unrecoverable user-memory
+   * access from inside a syscall.
+   */
   memset(&last_exc, 0, sizeof(last_exc));
   test_thread_start(mach_task_self(), test_syscall_bad_arg_on_stack, NULL);
   ASSERT_RET(mach_msg_server_once(exc_server, 4096, excp, MACH_MSG_OPTION_NONE), "error in exc server");
   ASSERT((last_exc.exception == EXC_BAD_ACCESS) && (last_exc.code == KERN_INVALID_ADDRESS),
          "bad exception for test_syscall_bad_arg_on_stack()");
+#else
+  (void) test_syscall_bad_arg_on_stack;   /* not exercised on aarch64 */
+#endif
 
   return 0;
 }

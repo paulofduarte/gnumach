@@ -553,20 +553,35 @@ void test_recv_interrupted_setreturn(void)
   ASSERT_RET(ret, "thread_abort");
 
 
+#ifdef __aarch64__
+  struct aarch64_thread_state state;
+  unsigned int count = AARCH64_THREAD_STATE_COUNT;
+  ret = thread_get_state(th, AARCH64_REGS_SEGS_STATE,
+                         (thread_state_t) &state, &count);
+#else
   struct i386_thread_state state;
   unsigned int count;
   count = i386_THREAD_STATE_COUNT;
   ret = thread_get_state(th, i386_REGS_SEGS_STATE,
                          (thread_state_t) &state, &count);
+#endif
   ASSERT_RET(ret, "thread_get_state()");
 
 #ifdef __i386__
   state.eax = 123;
 #elif defined(__x86_64__)
   state.rax = 123;
+#elif defined(__aarch64__)
+  /* AAPCS: function-return value in x0. */
+  state.x[0] = 123;
 #endif
+#ifdef __aarch64__
+  ret = thread_set_state(th, AARCH64_REGS_SEGS_STATE,
+                         (thread_state_t) &state, AARCH64_THREAD_STATE_COUNT);
+#else
   ret = thread_set_state(th, i386_REGS_SEGS_STATE,
                          (thread_state_t) &state, i386_THREAD_STATE_COUNT);
+#endif
   ASSERT_RET(ret, "thread_set_state");
 
   ret = thread_resume(th);

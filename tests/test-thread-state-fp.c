@@ -22,6 +22,127 @@
 #include <mach.user.h>
 #include <mach_port.user.h>
 
+#if defined(__aarch64__)
+
+/*
+ *	aarch64 NEON / VFP equivalent of test_fp_state_getset /
+ *	test_xfp_state_getset below.  We use one combined test because
+ *	aarch64 doesn't have the i386/i387 vs SSE/XSAVE split — the
+ *	whole NEON register file (V0..V31 plus FPCR/FPSR) lives in
+ *	struct aarch64_float_state and is fetched in one
+ *	thread_get_state(AARCH64_FLOAT_STATE) call.
+ *
+ *	The shape mirrors the x86 test: the test thread loads known
+ *	values into V3 and FPCR, spawns a helper thread, suspends
+ *	itself; the helper reads the test thread's saved FP state,
+ *	verifies V3 / FPCR are preserved, writes new values into V7
+ *	and FPCR, resumes the test thread; the test thread then reads
+ *	V7 and FPCR back via inline asm and asserts they reflect the
+ *	helper's writes.
+ */
+
+#define V3_PATTERN_LO	0x3333333333333333ULL
+#define V3_PATTERN_HI	0x3333333333333333ULL
+#define V7_PATTERN_LO	0x7777777777777777ULL
+#define V7_PATTERN_HI	0x7777777777777777ULL
+/* FPCR.RM = 01 (round toward +inf) -- bits 23-22 = 0b01. */
+#define FPCR_INIT	0x00400000ULL
+/* FPCR.RM = 10 (round toward -inf). */
+#define FPCR_MODIFIED	0x00800000ULL
+
+static void thread_fp_getset_aarch64(void *arg)
+{
+  int err;
+  thread_t th = *(thread_t*)arg;
+
+  wait_thread_suspended(th);
+
+  /*
+   * thread_setstatus() in aarch64/aarch64/pcb.c checks the address of
+   * the supplied state struct is aligned to alignof(struct
+   * aarch64_float_state) and rejects with KERN_INVALID_ARGUMENT
+   * otherwise.  __int128 inside v[32] gives the struct a 16-byte
+   * alignment requirement.  Using a file-scope static (BSS placement,
+   * fully aligned) sidesteps the stack-frame layout concerns we'd hit
+   * with a function-local — aarch64-unknown-none-elf-gcc doesn't always
+   * honour __attribute__((aligned(16))) on locals containing __int128
+   * across nested calls.
+   */
+  static struct aarch64_float_state state;
+  mach_msg_type_number_t state_count = AARCH64_FLOAT_STATE_COUNT;
+
+  memset(&state, 0, sizeof(state));
+  err = thread_get_state(th, AARCH64_FLOAT_STATE,
+                         (thread_state_t) &state, &state_count);
+  ASSERT_RET(err, "thread_get_state get failed");
+  ASSERT(state_count == AARCH64_FLOAT_STATE_COUNT, "bad state_count");
+
+  /* V3 should match what the test thread loaded. */
+  uint64_t v3_lo = (uint64_t) state.v[3];
+  uint64_t v3_hi = (uint64_t) (state.v[3] >> 64);
+  printf("V3 lo=%016llx hi=%016llx (expected lo=%016llx hi=%016llx)\n",
+         (unsigned long long) v3_lo, (unsigned long long) v3_hi,
+         (unsigned long long) V3_PATTERN_LO,
+         (unsigned long long) V3_PATTERN_HI);
+  ASSERT(v3_lo == V3_PATTERN_LO && v3_hi == V3_PATTERN_HI,
+         "V3 not preserved across context switch");
+  printf("FPCR get=%016llx (expected %016llx)\n",
+         (unsigned long long) state.fpcr,
+         (unsigned long long) FPCR_INIT);
+  ASSERT(state.fpcr == FPCR_INIT, "FPCR not preserved");
+
+  /* Modify V7 and FPCR. */
+  state.v[7] = ((__int128) V7_PATTERN_HI << 64) | V7_PATTERN_LO;
+  state.fpcr = FPCR_MODIFIED;
+
+  printf("set: state addr=%p count=%u fpsr=%llx fpcr=%llx fpmr=%llx\n",
+         &state, state_count,
+         (unsigned long long) state.fpsr,
+         (unsigned long long) state.fpcr,
+         (unsigned long long) state.fpmr);
+  err = thread_set_state(th, AARCH64_FLOAT_STATE,
+                         (thread_state_t) &state, state_count);
+  ASSERT_RET(err, "thread_set_state set failed");
+
+  err = thread_resume(th);
+  ASSERT_RET(err, "error in thread_resume");
+  thread_terminate(mach_thread_self());
+  FAILURE("thread_terminate");
+}
+
+static void test_fp_state_getset_aarch64(void)
+{
+  int err;
+  thread_t th = mach_thread_self();
+
+  /* Load known value into V3 and FPCR. */
+  uint64_t v3_bytes[2] = { V3_PATTERN_LO, V3_PATTERN_HI };
+  asm volatile ("ldr q3, [%0]" :: "r"(v3_bytes) : "v3");
+  uint64_t fpcr_init = FPCR_INIT;
+  asm volatile ("msr fpcr, %0" :: "r"(fpcr_init));
+
+  /* Spawn helper, then suspend self so helper sees a stable FP state. */
+  test_thread_start(mach_task_self(), thread_fp_getset_aarch64, &th);
+  err = thread_suspend(th);
+  ASSERT_RET(err, "error in thread_suspend");
+
+  /* Check V7 and FPCR have the values the helper set. */
+  uint64_t v7_after[2] = { 0, 0 };
+  asm volatile ("str q7, [%0]" :: "r"(v7_after) : "memory");
+  uint64_t fpcr_after = 0;
+  asm volatile ("mrs %0, fpcr" : "=r"(fpcr_after));
+  printf("V7 lo=%016llx hi=%016llx\n",
+         (unsigned long long) v7_after[0], (unsigned long long) v7_after[1]);
+  printf("FPCR after=%016llx (expected %016llx)\n",
+         (unsigned long long) fpcr_after,
+         (unsigned long long) FPCR_MODIFIED);
+  ASSERT(v7_after[0] == V7_PATTERN_LO && v7_after[1] == V7_PATTERN_HI,
+         "V7 wasn't correctly set by the helper thread");
+  ASSERT(fpcr_after == FPCR_MODIFIED, "FPCR wasn't updated by the helper thread");
+}
+
+#endif /* __aarch64__ */
+
 #if defined(__i386__) || defined(__x86_64__)
 #include <mach_i386.user.h>
 
@@ -244,6 +365,8 @@ int main(int argc, char *argv[], int envc, char *envp[])
 #if defined(__i386__) || defined(__x86_64__)
   test_fp_state_getset();
   test_xfp_state_getset();
+#elif defined(__aarch64__)
+  test_fp_state_getset_aarch64();
 #else
   FAILURE("FP/XSTATE test missing on this arch!");
 #endif
