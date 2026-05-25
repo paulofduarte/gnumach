@@ -2687,6 +2687,9 @@ ipc_type_name(
 		case MACH_MSG_TYPE_INTEGER_64:
 		return "int64";
 
+		case MACH_MSG_TYPE_INTEGER_128:
+		return "int128";
+
 		case MACH_MSG_TYPE_CHAR:
 		return "char";
 

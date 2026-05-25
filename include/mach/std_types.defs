@@ -32,6 +32,10 @@
 
 type int32_t = MACH_MSG_TYPE_INTEGER_32;
 type int64_t = MACH_MSG_TYPE_INTEGER_64;
+#ifdef __SIZEOF_INT128__
+type __int128_t = MACH_MSG_TYPE_INTEGER_128
+	ctype: __int128_t;
+#endif
 type boolean_t = MACH_MSG_TYPE_BOOLEAN;
 type unsigned = MACH_MSG_TYPE_INTEGER_32;
 type uint32_t = MACH_MSG_TYPE_INTEGER_32;

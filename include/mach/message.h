@@ -357,8 +357,9 @@ _Static_assert (sizeof (mach_msg_type_t) == sizeof (mach_msg_type_long_t),
 #define MACH_MSG_TYPE_PORT_SEND_ONCE	MACH_MSG_TYPE_MOVE_SEND_ONCE
 
 #define MACH_MSG_TYPE_PROTECTED_PAYLOAD	23
+#define MACH_MSG_TYPE_INTEGER_128	24
 
-#define MACH_MSG_TYPE_LAST		23		/* Last assigned */
+#define MACH_MSG_TYPE_LAST		24		/* Last assigned */
 
 /*
  *  A dummy value.  Mostly used to indicate that the actual value
